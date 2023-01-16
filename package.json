@@ -1,9 +1,9 @@
 {
-  "name": "@borkenware/singyeongjs",
+  "name": "nyuleon",
   "version": "0.1.0",
   "description": "NodeJS client for singyeong",
   "type": "module",
-  "repository": "git@github.com:borkenware/singyeongjs.git",
+  "repository": "git@github.com:borkenware/nyuleon.git",
   "author": "Cynthia <cyyynthia@borkenware.com>",
   "license": "BSD-3-Clause",
   "engines": {
@@ -11,20 +11,23 @@
     "pnpm": ">= 7"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "rimraf dist && tsc"
   },
   "dependencies": {
-    "tiny-typed-emitter": "^2.1.0",
+    "tiny-typed-emitter": "^2.1.0"
+  },
+  "peerDependencies": {
     "undici": "^5.15.0"
   },
   "devDependencies": {
     "@types/node": "^18.11.18",
+    "rimraf": "^4.0.7",
     "ts-node": "^10.9.1",
-    "typescript": "^4.9.4"
+    "typescript": "^4.9.4",
+    "undici": "^5.15.0"
   },
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./socket": "./dist/socket.js"
+    ".": "./dist/index.js"
   }
 }

@@ -26,13 +26,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// import type { OpCode } from './socket.js'
 import type { MetadataData, TypeToMetadata } from './query/metadata.js'
 import type { Query } from './query/query.js'
 
 import { TypedEmitter } from 'tiny-typed-emitter'
 import { type Dispatcher, Client as HttpClient } from 'undici'
-import { type SingyeongSocketOptions, DispatchEvent, SingyeongSocket } from './socket.js'
+import { type SingyeongSocketOptions, SingyeongSocket } from './socket/socket.js'
+import { DispatchEvent } from './socket/dispatch.js'
 
 export type Message<T = any> = {
   /** The payload. */
@@ -50,7 +50,7 @@ export type QueueMessage<T = any> = {
   payload: T
   /** The nonce of the payload, if set by the emitter. */
   nonce?: string
-  /** Acks the message. Alias to `socket.queueAck(msg.queue, msg.id)`. */
+  /** Acks the message. Alias to `client.queueAck(msg.queue, msg.id)`. */
   ack: () => void
 }
 
@@ -67,6 +67,28 @@ export type Client = {
   queues: string[]
 }
 
+export type SingyeongOpts = SingyeongSocketOptions & {
+  /** When set to true, the client will not connect and you will only be able to use the REST API. */
+  restOnly?: boolean
+}
+
+export type MessageParams<T extends MetadataData = MetadataData> = { query: Query<T>, payload: any, nonce?: string }
+
+export type QueueMessageParams<T extends MetadataData = MetadataData> = MessageParams<T> & { queue: string }
+
+export type RequestParams =
+  | {
+    method: 'GET'
+    route: string
+    headers?: Record<string, string | undefined>
+  }
+  | {
+    method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+    route: string
+    headers?: Record<string, string | undefined>
+    body?: any
+  }
+
 type ClientEvents = {
   ready: (restricted: boolean) => void
   message: (message: Message, broadcast: boolean) => void
@@ -81,31 +103,6 @@ type ClientEvents = {
   zombie: () => void
   error: (e: Error) => void
 }
-
-export enum State {
-  CONNECTING = 'connected',
-  CONNECTED = 'connected',
-  RECONNECTING = 'reconnecting',
-  DISCONNECTED = 'disconnected',
-}
-
-export type SingyeongOpts = SingyeongSocketOptions & {
-  /** When set to true, the client will not connect and you will only be able to use the REST API. */
-  restOnly?: boolean
-}
-
-export type RequestParams =
-  | {
-    method: 'GET'
-    route: string
-    headers?: Record<string, string | undefined>
-  }
-  | {
-    method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-    route: string
-    headers?: Record<string, string | undefined>
-    body?: any
-  }
 
 export default class SingyeongClient<TMetadata extends MetadataData = MetadataData> extends TypedEmitter<ClientEvents> {
   #url: URL
@@ -158,11 +155,12 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
   /**
    * Sends a message to a *single* singyeong client matching the routing query.
    *
-   * @param query Routing query.
-   * @param payload Payload to send.
-   * @param nonce String that'll be sent along with the message. Can be used for req-res messaging.
+   * @param message Message to send.
+   * @param message.query Routing query.
+   * @param message.payload Payload to send.
+   * @param message.nonce String that'll be sent along with the message. Can be used for req-res messaging.
    */
-  send<M extends MetadataData = MetadataData> (query: Query<M>, payload: any, nonce?: string) {
+  send<M extends MetadataData = MetadataData> ({ query, payload, nonce }: MessageParams<M>) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
     this.#socket.send(query, payload, nonce)
   }
@@ -170,24 +168,25 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
   /**
    * Sends a message to a *all* singyeong client matching the routing query.
    *
-   * @param query Routing query.
-   * @param payload Payload to send.
-   * @param nonce String that'll be sent along with the message. Can be used for req-res messaging.
+   * @param message Message to send.
+   * @param message.query Routing query.
+   * @param message.payload Payload to send.
+   * @param message.nonce String that'll be sent along with the message. Can be used for req-res messaging.
    */
-  broadcast<M extends MetadataData = MetadataData> (query: Query<M>, payload: any, nonce?: string) {
+  broadcast<M extends MetadataData = MetadataData> ({ query, payload, nonce }: MessageParams<M>) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
     this.#socket.broadcast(query, payload, nonce)
   }
 
   /**
-   * Pushes a message to a named queue and will dispatch it to a client matching the query.
+   * Pushes a message to a named queue, which will be dispatched to a client matching the query.
    *
-   * @param queue Name of the queue.
+   * @param queue Name of the queue to push into.
    * @param query Routing query.
    * @param payload Payload to send.
    * @param nonce String that'll be sent along with the message. Can be used for req-res messaging.
    */
-  queue<M extends MetadataData = MetadataData> (queue: string, query: Query<M>, payload: any, nonce?: string) {
+  queue<M extends MetadataData = MetadataData> ({ queue, query, payload, nonce }: QueueMessageParams<M>) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
     this.#socket.queue(queue, query, payload, nonce)
   }
@@ -196,7 +195,7 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
    * Requests the server a subscription to a named queue.
    * Subscriptions will be cached and restored upon reconnecting if connection is lost.
    *
-   * @param queue Name of the queue.
+   * @param queue Name of the queue to subscribe to.
    */
   queueSubscribe (queue: string) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
@@ -206,7 +205,7 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
   /**
    * Requests the server to unsubscribe from a named queue.
    *
-   * @param queue Name of the queue.
+   * @param queue Name of the queue to unsubscribe from.
    */
   queueUnsubscribe (queue: string) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
@@ -218,7 +217,7 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
    * If unacknowledged, messages will be re-send after a certain server-configured delay.
    *
    * @param queue Name of the queue.
-   * @param id ID sent by singyeong to identify a QUEUE dispatch.
+   * @param id ID sent by singyeong along with the message you want to acknowledge.
    */
   queueAck (queue: string, id: string) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
@@ -238,7 +237,10 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
   }
 
   /**
-   * Closes the connection to singyeong.
+   * Closes the connection to the singyeong server.
+   *
+   * @param code WebSocket close code
+   * @param reason WebSocket close reason message
    */
   close (code?: number, reason?: string) {
     if (!this.#socket) throw new Error(this.#opts.restOnly ? 'client is in rest-only mode' : 'client have been closed')
@@ -246,30 +248,14 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
     this.#socket = void 0
   }
 
-  /** REST */
-
   /**
-   * Queries the server the list of clients that match a particular query.
+   * Sends an HTTP request to an application through singyeong.
+   * *Available in REST-only mode.*
    *
-   * @param query Routing query you want to search for
-   * @param application Name of the application you are looking for.
-   * @returns Clients that match the routing query
+   * @param query Routing query to find the application to request.
+   * @param request Request to send to the target client.
+   * @returns Whatever the target respond responded with.
    */
-  async findClients<M extends MetadataData = MetadataData> (query: Query<M>, application?: string): Promise<Client[]> {
-    const res = await this.#dispatcher.request({
-      method: 'POST',
-      path: '/api/v1/query',
-      headers: { authorization: this.#opts.authentication },
-      body: JSON.stringify({
-        application: application,
-        query: query,
-      })
-    })
-
-    // todo: error handling?
-    return res.body.json()
-  }
-
   proxy<M extends MetadataData = MetadataData> (query: Query<M>, request: RequestParams) {
     return this.#dispatcher.request({
       method: 'POST',
@@ -278,13 +264,32 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
       body: JSON.stringify({
         ...request,
         query: query,
-      })
+      }),
     })
+  }
+
+  /**
+   * Queries the server the list of clients that match a particular query.
+   * *Available in REST-only mode.*
+   *
+   * @param query Routing query you want to search for.
+   * @returns Clients that match the routing query
+   */
+  async findClients<M extends MetadataData = MetadataData> (query: Query<M>): Promise<Client[]> {
+    const res = await this.#dispatcher.request({
+      method: 'POST',
+      path: '/api/v1/query',
+      headers: { authorization: this.#opts.authentication },
+      body: JSON.stringify(query),
+    })
+
+    return res.body.json()
   }
 
   /**
    * Sends an arbitrary request to the singyeong server. Meant for plugin routes.
    * You should NOT use this method for standard requests and should use the appropriate helpers.
+   * *Available in REST-only mode.*
    *
    * @param request The request to send. See Undici's documentation for more information.
    * @returns The request response.
@@ -293,7 +298,6 @@ export default class SingyeongClient<TMetadata extends MetadataData = MetadataDa
     return this.#dispatcher.request(request)
   }
 
-  /** INTERNALS */
   #handleDispatch (evt: string, payload: any) {
     switch (evt) {
       case DispatchEvent.SEND:

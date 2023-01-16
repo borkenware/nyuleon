@@ -26,6 +26,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-export * from './socket/payload.js'
-export * from './socket/dispatch.js'
-export * from './socket/socket.js'
+export type SingyeongErrorOptions = ErrorOptions & {
+  code: string
+  extraInfo: any
+}
+
+export default class SingyeongError extends Error {
+  code: string
+  extraInfo: any
+
+  constructor (message: string, options: SingyeongErrorOptions) {
+    super (message, options)
+    this.code = options.code
+    this.extraInfo = options.extraInfo
+  }
+}

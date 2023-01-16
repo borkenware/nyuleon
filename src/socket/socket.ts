@@ -37,6 +37,7 @@ import { type CloseEvent, WebSocket } from 'undici'
 
 import { OpCode } from './payload.js'
 import { DispatchEvent } from './dispatch.js'
+import SingyeongError from './error.js'
 
 // Socket state
 const enum State {
@@ -62,7 +63,7 @@ export type SingyeongSocketOptions = {
   namespace?: string
   /** Whether the client wants to receive events when a client dis/connects to/from the server. */
   receiveClientUpdates?: boolean
-  /** Undici dispatcher to use for the WebSocket connection. */
+  /** Undici dispatcher to use for all HTTP requests. */
   dispatcher?: Dispatcher
 }
 
@@ -75,7 +76,7 @@ type SingyeongSocketEvents = {
   zombie: () => void
   reconnect: (code: number, reason: string, wasClean: boolean) => void
   close: (code: number, reason: string, wasClean: boolean) => void
-  error: (e: Error) => void
+  error: (e: SingyeongError) => void
 }
 
 /**
@@ -143,9 +144,10 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
   /**
    * Sends a message to a *single* singyeong client matching the routing query.
    *
-   * @param query Routing query.
-   * @param payload Payload to send.
-   * @param nonce String that'll be sent along with the message. Can be used for req-res messaging.
+   * @param message Message to send.
+   * @param message.query Routing query.
+   * @param message.payload Payload to send.
+   * @param message.nonce String that'll be sent along with the message. Can be used for req-res messaging.
    */
   send<M extends MetadataData = MetadataData> (query: Query<M>, payload: any, nonce?: string) {
     this.dispatch(DispatchEvent.SEND, {
@@ -158,9 +160,10 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
   /**
    * Sends a message to a *all* singyeong client matching the routing query.
    *
-   * @param query Routing query.
-   * @param payload Payload to send.
-   * @param nonce String that'll be sent along with the message. Can be used for req-res messaging.
+   * @param message Message to send.
+   * @param message.query Routing query.
+   * @param message.payload Payload to send.
+   * @param message.nonce String that'll be sent along with the message. Can be used for req-res messaging.
    */
   broadcast<M extends MetadataData = MetadataData> (query: Query<M>, payload: any, nonce?: string) {
     this.dispatch(DispatchEvent.BROADCAST, {
@@ -171,9 +174,9 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
   }
 
   /**
-   * Pushes a message to a named queue and will dispatch it to a client matching the query.
+   * Pushes a message to a named queue, which will be dispatched to a client matching the query.
    *
-   * @param queue Name of the queue.
+   * @param queue Name of the queue to push into.
    * @param query Routing query.
    * @param payload Payload to send.
    * @param nonce String that'll be sent along with the message. Can be used for req-res messaging.
@@ -191,7 +194,7 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
    * Requests the server a subscription to a named queue.
    * Subscriptions will be cached and restored upon reconnecting if connection is lost.
    *
-   * @param queue Name of the queue.
+   * @param queue Name of the queue to subscribe to.
    */
   queueSubscribe (queue: string) {
     this.#subscribedQueues.add(queue)
@@ -201,7 +204,7 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
   /**
    * Requests the server to unsubscribe from a named queue.
    *
-   * @param queue Name of the queue.
+   * @param queue Name of the queue to unsubscribe from.
    */
   queueUnsubscribe (queue: string) {
     this.#subscribedQueues.delete(queue)
@@ -213,7 +216,7 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
    * If unacknowledged, messages will be re-send after a certain server-configured delay.
    *
    * @param queue Name of the queue.
-   * @param id ID sent by singyeong to identify a QUEUE dispatch.
+   * @param id ID sent by singyeong along with the message you want to acknowledge.
    */
   queueAck (queue: string, id: string) {
     this.dispatch(DispatchEvent.QUEUE_ACK, { queue: queue, id: id })
@@ -235,7 +238,10 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
   }
 
   /**
-   * Closes the connection to singyeong.
+   * Closes the connection to the singyeong server.
+   *
+   * @param code WebSocket close code
+   * @param reason WebSocket close reason message
    */
   close (code?: number, reason?: string) {
     if (this.#state !== State.CONNECTED) {
@@ -329,11 +335,12 @@ export class SingyeongSocket<TMetadata extends MetadataData = MetadataData> exte
         break
       case OpCode.INVALID:
       case OpCode.ERROR:
-        console.log(payload.d)
+        // todo: handle known errors like `no_route`?
+        this.emit('error', new SingyeongError('singyeong server reported an error', { code: payload.d.error, extraInfo: payload.d.extra_info }))
         break
       default:
         // TypeScript considers this state impossible (good!), but we handle it anyways -just in case-
-        this.emit('error', new Error(`unexpected payload op ${(payload as any).op}`))
+        this.emit('error', new SingyeongError('unexpected payload op', { code: 'unknown_op', extraInfo: payload }))
         this.close(4000, 'unexpected payload')
         break
     }

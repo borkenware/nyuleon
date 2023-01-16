@@ -62,7 +62,7 @@ type QueryEntry<TPath extends string, TValue extends MetadataValue> =
   | {
     path: TPath,
     op: '$in' | '$nin'
-    to: { value: TValue }
+    to: { value: TValue[] }
   }
   | (
     TValue extends Array<infer T>

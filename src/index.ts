@@ -26,22 +26,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-export {
-  type MetadataType,
-  type MetadataValue,
-  type MetadataEntry,
-  type Metadata,
-  type MetadataData,
-  type TypeToMetadata,
-  type MetadataToType,
-} from './query/metadata.js'
+export * from './query/metadata.js'
+export * from './query/query.js'
 
-export {
-  type MetadataToQuery,
-  type QueryCompare,
-  type QueryLogic,
-  type QuerySelector,
-  type Query,
-} from './query/query.js'
+export * from './socket/payload.js'
+export * from './socket/dispatch.js'
+export * from './socket/socket.js'
+export * from './socket/error.js'
+export { default as SingyeongError } from './socket/error.js'
 
-export { type QueueMessage, default } from './client.js'
+export * from './client.js'
+export { default } from './client.js'

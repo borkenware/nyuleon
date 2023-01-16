@@ -85,7 +85,7 @@ export type InvalidPayloadData = {
   /** The error message/code. */
   error: string
   /** Extra data about the error. */
-  extra_data: unknown
+  extra_info: unknown
 }
 
 export type HeartbeatPayloadData = {
@@ -107,7 +107,7 @@ export type ErrorPayloadData = {
   /** The error message/code. */
   error: string
   /** Extra data about the error. */
-  extra_data: unknown
+  extra_info: unknown
 }
 
 export type IncomingPayload =

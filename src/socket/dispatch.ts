@@ -71,7 +71,7 @@ export type IncomingMessageDispatchPayloadData = {
   /** Optional nonce, can be used for req-res queries. */
   nonce?: string | null
   /** Whatever data you received. */
-  payload: unknown
+  payload: any
 }
 
 export type OutgoingQueueDispatchPayloadData = {
